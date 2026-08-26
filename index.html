@@ -63,14 +63,23 @@ input:focus{outline:none;border-color:var(--signal)}
 .cell.bad{background:rgba(156,0,6,.45)}
 .mark{position:relative}
 .mark.miss::after{content:'';position:absolute;inset:38%;border-radius:50%;background:var(--chart);opacity:.75}
-.mark.hit::after{content:'\2715';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-  color:var(--signal);font-weight:600;font-size:min(3.2vw,15px)}
-.mark.dead::after{color:#FF6B5B}
+.mark.hit{background:radial-gradient(circle at 50% 72%,rgba(242,160,61,.50),rgba(192,57,43,.32) 55%,rgba(192,57,43,0) 76%)}
+.mark.dead{background:radial-gradient(circle at 50% 72%,rgba(255,196,74,.62),rgba(192,57,43,.45) 55%,rgba(192,57,43,0) 80%);
+  box-shadow:inset 0 0 0 1px rgba(192,57,43,.55)}
+.fire{position:absolute;left:8%;top:2%;width:84%;height:96%;pointer-events:none}
+.fire svg{width:100%;height:100%;display:block;overflow:visible}
+.fire .fl{transform-origin:50% 92%;animation:flick .82s ease-in-out infinite;animation-delay:var(--d,0s)}
+.fire .sp{transform-origin:50% 92%;animation:spark 1.6s linear infinite;animation-delay:var(--d,0s)}
+.mark.dead .fire{left:2%;top:-8%;width:96%;height:108%}
+@keyframes flick{0%,100%{transform:scale(1,1)}25%{transform:scale(.92,1.10)}50%{transform:scale(1.06,.94)}75%{transform:scale(.96,1.06)}}
+@keyframes spark{0%{transform:translateY(0);opacity:0}20%{opacity:.9}100%{transform:translateY(-46px);opacity:0}}
+@media (prefers-reduced-motion:reduce){.fire .fl,.fire .sp{animation:none}}
 .ships{position:absolute;inset:0;z-index:2;pointer-events:none}
 .ship{position:absolute;pointer-events:auto;cursor:grab;touch-action:none;transition:filter .15s}
 .ship svg{width:100%;height:100%;display:block}
 .ship.dragging{opacity:.25}
-.ship.sunkship{filter:grayscale(.4) brightness(.7) sepia(1) hue-rotate(-35deg) saturate(3)}
+.ship.sunkship{filter:grayscale(.55) brightness(.62) sepia(1) hue-rotate(-38deg) saturate(3.2)}
+.ship.sunkship svg{opacity:.95}
 .ghost{position:fixed;z-index:99;pointer-events:none;opacity:.92;filter:drop-shadow(0 6px 10px rgba(0,0,0,.5))}
 
 /* ---- tray ---- */
@@ -149,7 +158,7 @@ input:focus{outline:none;border-color:var(--signal)}
         <input id="turn-url" placeholder="turn:your.server:3478" autocomplete="off">
         <div class="row" style="margin-top:8px"><input id="turn-user" placeholder="username" autocomplete="off"></div>
         <div class="row"><input id="turn-pass" placeholder="credential" autocomplete="off"></div>
-        <div class="hint" style="margin-top:8px">Free credentials: metered.ca (500&nbsp;MB/month). Applies to the next room you create or join.</div>
+        <label style="margin-top:12px;display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;color:var(--paper);font-size:13px"><input type="checkbox" id="turn-only" style="width:auto;flex:0 0 auto;padding:0"> Force relay (TURN only)</label><div class="hint" style="margin-top:8px">Free credentials: metered.ca (500&nbsp;MB/month). Saved on this device, applied to the next room you create or join. Force relay is for testing: it fails fast if the TURN credentials are wrong.</div>
       </div>
     </div>
   </div>
@@ -232,6 +241,27 @@ input:focus{outline:none;border-color:var(--signal)}
 var $=function(id){return document.getElementById(id)};
 var N=10, PREFIX='bship-';
 var OPEN='openrelayproject';
+var LS='bship-turn';
+function saveTurn(){
+  try{ localStorage.setItem(LS,JSON.stringify({
+    u:$('turn-url').value.trim(), n:$('turn-user').value.trim(),
+    p:$('turn-pass').value.trim(), o:$('turn-only').checked })) }catch(x){}
+}
+function loadTurn(){
+  try{
+    var v=JSON.parse(localStorage.getItem(LS)||'{}');
+    if(v.u){$('turn-url').value=v.u; $('adv').classList.remove('hide')}
+    if(v.n)$('turn-user').value=v.n;
+    if(v.p)$('turn-pass').value=v.p;
+    $('turn-only').checked=!!v.o;
+  }catch(x){}
+}
+function customTurn(){
+  var u=$('turn-url').value.trim();
+  if(!u) return null;
+  var urls=u.split(/[\s,]+/).filter(Boolean);
+  return {urls:urls.length>1?urls:urls[0],username:$('turn-user').value.trim(),credential:$('turn-pass').value.trim()};
+}
 function iceList(){
   var list=[
     {urls:'stun:stun.l.google.com:19302'},
@@ -240,16 +270,20 @@ function iceList(){
     {urls:'turn:openrelay.metered.ca:80',username:OPEN,credential:OPEN},
     {urls:'turn:openrelay.metered.ca:443',username:OPEN,credential:OPEN},
     {urls:'turn:openrelay.metered.ca:443?transport=tcp',username:OPEN,credential:OPEN},
-    {urls:'turns:openrelay.metered.ca:443?transport=tcp',username:OPEN,credential:OPEN},
-    {urls:'turn:standard.relay.metered.ca:80',username:OPEN,credential:OPEN},
-    {urls:'turn:standard.relay.metered.ca:443?transport=tcp',username:OPEN,credential:OPEN}
+    {urls:'turns:openrelay.metered.ca:443?transport=tcp',username:OPEN,credential:OPEN}
   ];
-  var u=$('turn-url').value.trim();
-  if(u) list.unshift({urls:u,username:$('turn-user').value.trim(),credential:$('turn-pass').value.trim()});
+  var c=customTurn();
+  if(c) list.unshift(c);
   return list;
 }
-function peerOpt(){return {config:{iceServers:iceList(),iceCandidatePoolSize:2}}}
-var linked=false, joinTimer=null, attempts=0, MAXTRY=3;
+function relayOnly(){ return !!($('turn-only')&&$('turn-only').checked) }
+function peerOpt(){
+  var cfg={iceServers:iceList(),iceCandidatePoolSize:3};
+  if(relayOnly()) cfg.iceTransportPolicy='relay';
+  return {config:cfg, debug:0};
+}
+var netRetry=0;
+var linked=false, joinTimer=null, attempts=0, MAXTRY=4, TRYMS=20000;
 var TYPES=[
   {k:'carrier',   n:'Carrier',   s:5},
   {k:'battleship',n:'Battleship',s:4},
@@ -309,6 +343,29 @@ function shipSVG(kind,size,horiz){
   var L=size*100, art=shipArt(kind,size);
   if(horiz) return '<svg viewBox="0 0 '+L+' 100" xmlns="http://www.w3.org/2000/svg">'+art+'</svg>';
   return '<svg viewBox="0 0 100 '+L+'" xmlns="http://www.w3.org/2000/svg"><g transform="translate(100,0) rotate(90)">'+art+'</g></svg>';
+}
+
+/* ================= fire artwork ================= */
+function fireSVG(big){
+  var s='<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">';
+  s+='<g class="fl">';
+  s+='<path d="M50 6 C 64 30 84 42 84 62 a34 34 0 0 1 -68 0 C 16 44 32 36 40 16 c 3 12 9 18 13 25 c 3 -11 -3 -24 -3 -35 z" fill="#C0392B"/>';
+  s+='<path d="M50 30 C 60 48 72 54 72 66 a22 22 0 0 1 -44 0 c 0 -13 14 -19 22 -36 z" fill="#F2A03D"/>';
+  s+='<path d="M50 56 c 6 9 10 12 10 18 a10 10 0 0 1 -20 0 c 0 -6 4 -9 10 -18 z" fill="#FFE9A8"/>';
+  s+='</g>';
+  if(big){
+    s+='<g class="sp" fill="#F2A03D"><circle cx="30" cy="70" r="3.2"/><circle cx="70" cy="76" r="2.6"/><circle cx="52" cy="66" r="2.2"/></g>';
+  }
+  s+='</svg>';
+  return s;
+}
+function paintMark(el,state,dead,i){
+  var cls='mark'+(state===1?' miss':'')+(state===2?(dead?' hit dead':' hit'):'');
+  if(el.className===cls) return;
+  el.className=cls;
+  el.innerHTML = state===2
+    ? '<div class="fire" style="--d:'+(((i*37)%9)/10)+'s">'+fireSVG(dead)+'</div>'
+    : '';
 }
 
 /* ================= avatars ================= */
@@ -564,11 +621,14 @@ function renderBattle(){
   var ew=$('ships-enemy'); ew.innerHTML='';
   enemyWrecks.forEach(function(s){ var e=shipEl({id:'w',kind:s.kind,size:s.size,r:s.r,c:s.c,horiz:s.horiz,sunk:true},false); ew.appendChild(e) });
   var mm=$('marks-mine').children, me2=$('marks-enemy').children;
+  var deadMine=new Array(N*N).fill(false), deadEnemy=new Array(N*N).fill(false);
+  fleet.forEach(function(s){ if(s.placed&&s.sunk) shipCells(s).forEach(function(i){deadMine[i]=true}) });
+  enemyWrecks.forEach(function(w){
+    for(var k=0;k<w.size;k++) deadEnemy[w.horiz?(w.r*N+w.c+k):((w.r+k)*N+w.c)]=true;
+  });
   for(var i=0;i<N*N;i++){
-    var c1='mark'; if(myHits[i]===1)c1+=' miss'; if(myHits[i]===2)c1+=' hit dead';
-    mm[i].className=c1;
-    var c2='mark'; if(enemy[i]===1)c2+=' miss'; if(enemy[i]===2)c2+=' hit';
-    me2[i].className=c2;
+    paintMark(mm[i],myHits[i],deadMine[i],i);
+    paintMark(me2[i],enemy[i],deadEnemy[i],i);
   }
   var lost=myHits.filter(function(v){return v===2}).length;
   var hit=enemy.filter(function(v){return v===2}).length;
@@ -599,7 +659,17 @@ function sendChat(){
 
 /* ================= networking ================= */
 function send(o){ if(conn&&conn.open) conn.send(o) }
+function watchIce(){
+  var pc=conn&&conn.peerConnection;
+  if(!pc) return;
+  pc.oniceconnectionstatechange=function(){
+    var st=pc.iceConnectionState;
+    if(!linked) $('lobby-status').textContent='Negotiating\u2026 ('+st+')';
+    if(st==='failed'&&!linked) stageFail('ICE failed. No route between the two networks \u2014 a working TURN relay is required.');
+  };
+}
 function wireConn(){
+  watchIce();
   conn.on('open',function(){
     linked=true;
     if(joinTimer){clearTimeout(joinTimer);joinTimer=null}
@@ -708,7 +778,7 @@ function tryConnect(){
   wireConn();
   joinTimer=setTimeout(function(){
     stageFail('Timed out reaching the room. The relay could not be reached from one of the two networks.');
-  },14000);
+  },TRYMS);
 }
 function hostRoom(){
   grabName(); roomCode=newCode(); isHost=true;
@@ -719,28 +789,50 @@ function hostRoom(){
   peer=new Peer(PREFIX+roomCode,peerOpt());
   peer.on('open',function(){$('lobby-status').textContent='Room is open. Your opponent joins with the code above.'});
   peer.on('connection',function(c){ if(conn&&conn.open){c.close();return} conn=c; wireConn() });
+  peer.on('disconnected',function(){
+    if(linked) return;
+    $('lobby-status').textContent='Signalling dropped. Reconnecting\u2026';
+    setTimeout(function(){ try{ if(peer&&!peer.destroyed) peer.reconnect() }catch(x){} },900);
+  });
   peer.on('error',function(e){
     if(e.type==='unavailable-id'){destroyPeer();hostRoom()}
+    else if(e.type==='network'||e.type==='socket-error'||e.type==='server-error'){
+      $('lobby-status').textContent='Signalling server unreachable. Retrying\u2026';
+      setTimeout(function(){ try{ if(peer&&!peer.destroyed) peer.reconnect() }catch(x){} },1500);
+    }
     else $('lobby-status').textContent='Error: '+e.type;
   });
 }
 function joinRoom(code){
   grabName(); isHost=false; roomCode=code;
   $('err-join').textContent='';
-  linked=false; attempts=0;
+  linked=false; attempts=0; netRetry=0;
   peer=new Peer(peerOpt());
   peer.on('open',function(){
     $('room-code').textContent=code;
     show('scr-lobby');
     tryConnect();
   });
+  peer.on('disconnected',function(){
+    if(linked||!peer||peer.destroyed) return;
+    $('lobby-status').textContent='Signalling dropped. Reconnecting\u2026';
+    setTimeout(function(){ try{ peer.reconnect() }catch(x){} },900);
+  });
   peer.on('error',function(e){
+    if(linked) return;
     if(e.type==='peer-unavailable'){
-      if(attempts<MAXTRY){ setTimeout(tryConnect,1200); return }
+      if(attempts<MAXTRY){ setTimeout(tryConnect,1500); return }
       return netFail('No room found with code '+code+'. Check the code, or ask the host to create the room again.');
     }
-    if(e.type==='network'||e.type==='socket-error'||e.type==='server-error')
-      return netFail('Could not reach the matchmaking server. Check the connection and try again.');
+    if(e.type==='network'||e.type==='socket-error'||e.type==='server-error'){
+      if(netRetry<3){
+        netRetry++;
+        $('lobby-status').textContent='Signalling server unreachable. Retry '+netRetry+' of 3\u2026';
+        setTimeout(function(){ try{ if(peer&&!peer.destroyed) peer.reconnect() }catch(x){} },1500);
+        return;
+      }
+      return netFail('Could not reach the matchmaking server after 3 tries. Switch network (Wi-Fi / mobile data) and try again.');
+    }
     netFail('Error: '+e.type);
   });
 }
