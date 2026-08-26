@@ -22,19 +22,24 @@ body{
   font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:14px;
   display:flex;justify-content:center;padding:16px 12px 32px;overflow-x:hidden;
 }
-.app{width:100%;max-width:440px}
+.app{width:100%;max-width:440px;min-width:0}
+#scr-menu,#scr-lobby,#scr-place,#scr-battle,#scr-end{position:relative;width:100%}
 h1{font-family:'Oswald',sans-serif;font-weight:600;letter-spacing:.18em;text-transform:uppercase;font-size:26px;margin:0 0 2px}
 .sub{color:var(--chart);font-size:11px;letter-spacing:.22em;text-transform:uppercase;margin-bottom:20px}
-.panel{border:1px solid var(--line);background:var(--hull);padding:16px;margin-bottom:14px;overflow:hidden}
+.panel{border:1px solid var(--line);background:var(--hull);padding:16px;margin-bottom:14px;
+  overflow:hidden;position:relative;isolation:isolate;contain:layout paint;transform:translateZ(0)}
 label{display:block;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--chart);margin-bottom:8px}
 button{font-family:'Oswald',sans-serif;font-size:15px;letter-spacing:.12em;text-transform:uppercase;
-  background:var(--signal);color:#08161F;border:0;padding:13px 16px;width:100%;cursor:pointer;transition:filter .15s}
+  background:var(--signal);color:#08161F;border:0;padding:13px 16px;width:100%;max-width:100%;cursor:pointer;
+  display:block;position:relative;z-index:0;line-height:1.2;transform:translateZ(0);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:filter .15s}
 button:hover{filter:brightness(1.1)}
 button:disabled{background:var(--line);color:#6E8B99;cursor:not-allowed}
-button.ghost{background:transparent;color:var(--paper);border:1px solid var(--line)}
+button.ghost{background:var(--deep);color:var(--paper);border:1px solid var(--line)}
 button.ghost:hover{border-color:var(--signal);filter:none}
-.row{display:flex;gap:8px;margin-top:8px}
+.row{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;width:100%}
 .row>button{flex:1 1 0;width:auto;min-width:0}
+.row>input{flex:1 1 100%;min-width:0;width:auto}
 .frow{display:flex;gap:10px;align-items:center}
 .frow>input{flex:1 1 auto;min-width:0;width:auto}
 .frow>.av{flex:0 0 52px;width:52px;height:52px;line-height:0}
@@ -44,7 +49,7 @@ input{display:block;width:100%;max-width:100%;padding:12px;background:var(--deep
 input.big{font-size:20px;letter-spacing:.35em;text-align:center;text-transform:uppercase}
 input:focus{outline:none;border-color:var(--signal)}
 .code{font-family:'Oswald',sans-serif;font-size:44px;letter-spacing:.3em;color:var(--signal);text-align:center;padding:8px 0 4px}
-.hint{font-size:12px;color:var(--chart);line-height:1.6}
+.hint{font-size:12px;color:var(--chart);line-height:1.6;position:relative;z-index:0}
 .readout{border-left:3px solid var(--signal);padding:8px 12px;margin-bottom:12px;background:var(--hull);
   min-height:44px;display:flex;align-items:center;font-size:13px;line-height:1.4}
 
@@ -153,12 +158,13 @@ input:focus{outline:none;border-color:var(--signal)}
       <label>Network</label>
       <div class="row" style="margin-top:0"><button class="ghost" id="btn-nettest">Test my network</button></div>
       <div class="hint" id="net-result" style="margin-top:10px">Run this if a room will not connect. It reports whether a relay is reachable.</div>
+      <label style="margin-top:12px;display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;color:var(--paper);font-size:13px;position:relative;z-index:1"><input type="checkbox" id="mode-p2p" style="width:auto;flex:0 0 auto;padding:0"> Direct P2P (WebRTC)</label><div class="hint" style="margin-top:6px">Off (default): the game talks through a public message broker over HTTPS. Works on 4G/5G, no TURN needed. On: direct WebRTC, lower latency, but fails behind carrier NAT.</div>
       <div class="row"><button class="ghost" id="btn-adv">Custom TURN server</button></div>
       <div id="adv" class="hide" style="margin-top:10px">
         <input id="turn-url" placeholder="turn:your.server:3478" autocomplete="off">
         <div class="row" style="margin-top:8px"><input id="turn-user" placeholder="username" autocomplete="off"></div>
         <div class="row"><input id="turn-pass" placeholder="credential" autocomplete="off"></div>
-        <label style="margin-top:12px;display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;color:var(--paper);font-size:13px"><input type="checkbox" id="turn-only" style="width:auto;flex:0 0 auto;padding:0"> Force relay (TURN only)</label><div class="hint" style="margin-top:8px">Free credentials: metered.ca (500&nbsp;MB/month). Saved on this device, applied to the next room you create or join. Force relay is for testing: it fails fast if the TURN credentials are wrong.</div>
+        <label style="margin-top:12px;display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;color:var(--paper);font-size:13px;position:relative;z-index:1"><input type="checkbox" id="turn-only" style="width:auto;flex:0 0 auto;padding:0"> Force relay (TURN only)</label><div class="hint" style="margin-top:8px">Free credentials: metered.ca (500&nbsp;MB/month). Saved on this device, applied to the next room you create or join. Force relay is for testing: it fails fast if the TURN credentials are wrong.</div>
       </div>
     </div>
   </div>
@@ -245,7 +251,7 @@ var LS='bship-turn';
 function saveTurn(){
   try{ localStorage.setItem(LS,JSON.stringify({
     u:$('turn-url').value.trim(), n:$('turn-user').value.trim(),
-    p:$('turn-pass').value.trim(), o:$('turn-only').checked })) }catch(x){}
+    p:$('turn-pass').value.trim(), o:$('turn-only').checked, p2p:$('mode-p2p').checked })) }catch(x){}
 }
 function loadTurn(){
   try{
@@ -254,6 +260,8 @@ function loadTurn(){
     if(v.n)$('turn-user').value=v.n;
     if(v.p)$('turn-pass').value=v.p;
     $('turn-only').checked=!!v.o;
+    $('mode-p2p').checked=!!v.p2p;
+    useRelay=!v.p2p;
   }catch(x){}
 }
 function customTurn(){
@@ -651,14 +659,18 @@ function addMsg(who,text){
 }
 function sendChat(){
   var v=$('in-chat').value.trim();
-  if(!v||!conn||!conn.open) return;
+  if(!v||!linkOpen()) return;
   send({t:'chat',m:v.slice(0,200)});
   addMsg('mine',v);
   $('in-chat').value='';
 }
 
 /* ================= networking ================= */
-function send(o){ if(conn&&conn.open) conn.send(o) }
+function linkOpen(){ return useRelay ? !!(mq&&mq.connected&&peerId) : !!(conn&&conn.open) }
+function send(o){
+  if(useRelay) relaySend(o);
+  else if(conn&&conn.open) conn.send(o);
+}
 function watchIce(){
   var pc=conn&&conn.peerConnection;
   if(!pc) return;
@@ -668,18 +680,19 @@ function watchIce(){
     if(st==='failed'&&!linked) stageFail('ICE failed. No route between the two networks \u2014 a working TURN relay is required.');
   };
 }
+function startSession(){
+  linked=true;
+  if(joinTimer){clearTimeout(joinTimer);joinTimer=null}
+  $('lobby-status').textContent='Connected.';
+  resetState();
+  $('msgs').innerHTML='';
+  send({t:'hello',name:me.name,seed:me.seed});
+  renderPlaceBoard(); renderBattle();
+  show('scr-place');
+}
 function wireConn(){
   watchIce();
-  conn.on('open',function(){
-    linked=true;
-    if(joinTimer){clearTimeout(joinTimer);joinTimer=null}
-    $('lobby-status').textContent='Connected.';
-    resetState();
-    $('msgs').innerHTML='';
-    send({t:'hello',name:me.name,seed:me.seed});
-    renderPlaceBoard(); renderBattle();
-    show('scr-place');
-  });
+  conn.on('open',startSession);
   conn.on('data',onData);
   conn.on('close',function(){
     if(!linked) return stageFail('The connection closed before the game started.');
@@ -761,6 +774,142 @@ function show(id){
   });
 }
 
+/* ================= relay transport (MQTT over WSS) ================= */
+var useRelay=true, mq=null, mqTopic='', myId='', peerId='', hbT=null, seenT=null, lastSeen=0, joinT=null, joinTries=0;
+var LIBS=[
+  'https://cdnjs.cloudflare.com/ajax/libs/mqtt/5.10.1/mqtt.min.js',
+  'https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js',
+  'https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js'
+];
+var BROKERS=[
+  'wss://broker.emqx.io:8084/mqtt',
+  'wss://broker.hivemq.com:8884/mqtt',
+  'wss://test.mosquitto.org:8081/mqtt'
+];
+function rid(){ return Math.random().toString(36).slice(2,10) }
+function loadLib(k,cb){
+  if(window.mqtt) return cb(true);
+  if(k>=LIBS.length) return cb(false);
+  var el=document.createElement('script');
+  el.src=LIBS[k];
+  el.onload=function(){ cb(!!window.mqtt) };
+  el.onerror=function(){ loadLib(k+1,cb) };
+  document.head.appendChild(el);
+}
+function relaySend(o){
+  if(!mq||!mq.connected) return;
+  o=JSON.parse(JSON.stringify(o)); o.f=myId;
+  try{ mq.publish(mqTopic,JSON.stringify(o),{qos:0}) }catch(x){}
+}
+function relayStop(){
+  if(hbT){clearInterval(hbT);hbT=null}
+  if(seenT){clearInterval(seenT);seenT=null}
+  if(joinT){clearInterval(joinT);joinT=null}
+  if(mq){ try{ mq.end(true) }catch(x){} mq=null }
+  peerId='';
+}
+function beat(){
+  lastSeen=Date.now();
+  if(hbT) clearInterval(hbT);
+  hbT=setInterval(function(){ relaySend({t:'ping'}) },5000);
+  if(seenT) clearInterval(seenT);
+  seenT=setInterval(function(){
+    if(linked && Date.now()-lastSeen>26000){ clearInterval(seenT); seenT=null; bail('Lost the connection to your opponent.') }
+  },4000);
+}
+function relayConnect(k,onReady,onFail){
+  if(k>=BROKERS.length) return onFail('Could not reach any message broker. Check the internet connection.');
+  $('lobby-status').textContent='Opening channel\u2026 ('+(k+1)+'/'+BROKERS.length+')';
+  var c;
+  try{ c=window.mqtt.connect(BROKERS[k],{clientId:'bs_'+rid(),clean:true,connectTimeout:8000,reconnectPeriod:0,keepalive:30}) }
+  catch(x){ return relayConnect(k+1,onReady,onFail) }
+  var settled=false;
+  c.on('connect',function(){
+    if(settled) return; settled=true;
+    mq=c;
+    c.subscribe(mqTopic,{qos:0},function(err){
+      if(err){ try{c.end(true)}catch(x){} mq=null; return relayConnect(k+1,onReady,onFail) }
+      onReady();
+    });
+  });
+  c.on('message',function(topic,buf){
+    var d; try{ d=JSON.parse(buf.toString()) }catch(x){ return }
+    if(!d||d.f===myId) return;
+    if(d.to&&d.to!==myId) return;
+    relayIn(d);
+  });
+  c.on('error',function(){
+    if(settled){ if(!linked){ /* keep waiting */ } return }
+    settled=true; try{c.end(true)}catch(x){}
+    relayConnect(k+1,onReady,onFail);
+  });
+  c.on('close',function(){
+    if(!settled){ settled=true; return relayConnect(k+1,onReady,onFail) }
+    if(linked) bail('The channel to the broker closed.');
+  });
+}
+function relayIn(d){
+  lastSeen=Date.now();
+  if(d.t==='ping') return;
+  if(d.t==='join'){
+    if(!isHost) return;
+    if(peerId&&peerId!==d.f) return;            // room busy
+    peerId=d.f;
+    relaySend({t:'ack',to:peerId});
+    if(!linked){ beat(); startSession() }
+    return;
+  }
+  if(d.t==='ack'){
+    if(isHost||linked) return;
+    peerId=d.f;
+    if(joinT){clearInterval(joinT);joinT=null}
+    beat(); startSession();
+    return;
+  }
+  if(!linked) return;
+  if(peerId&&d.f!==peerId) return;
+  onData(d);
+}
+function relayHost(){
+  grabName(); roomCode=newCode(); isHost=true; linked=false; peerId=''; myId=rid();
+  mqTopic='bship/'+roomCode;
+  $('room-code').textContent=roomCode;
+  show('scr-lobby');
+  $('lobby-status').textContent='Loading channel library\u2026';
+  loadLib(0,function(ok){
+    if(!ok) return netFail('Could not load the messaging library. Check the internet connection.');
+    relayConnect(0,function(){
+      $('lobby-status').textContent='Room is open. Your opponent joins with the code above.';
+    },netFail);
+  });
+}
+function relayJoin(code){
+  grabName(); isHost=false; roomCode=code; linked=false; peerId=''; myId=rid();
+  mqTopic='bship/'+code;
+  $('err-join').textContent='';
+  $('room-code').textContent=code;
+  show('scr-lobby');
+  $('lobby-status').textContent='Loading channel library\u2026';
+  loadLib(0,function(ok){
+    if(!ok) return netFail('Could not load the messaging library. Check the internet connection.');
+    relayConnect(0,function(){
+      joinTries=0;
+      $('lobby-status').textContent='Knocking on the room\u2026';
+      var knock=function(){
+        joinTries++;
+        if(joinTries>10){
+          if(joinT){clearInterval(joinT);joinT=null}
+          return netFail('No answer from room '+code+'. Check the code, and make sure the host still has the room open.');
+        }
+        $('lobby-status').textContent='Knocking on the room\u2026 '+joinTries+'/10';
+        relaySend({t:'join'});
+      };
+      knock();
+      joinT=setInterval(knock,1800);
+    },netFail);
+  });
+}
+
 /* ================= peer ================= */
 function newCode(){var A='ABCDEFGHJKLMNPQRSTUVWXYZ23456789',s='';for(var k=0;k<4;k++)s+=A[Math.floor(Math.random()*A.length)];return s}
 function grabName(){ me.name=($('in-name').value.trim()||'Captain').slice(0,14) }
@@ -781,6 +930,7 @@ function tryConnect(){
   },TRYMS);
 }
 function hostRoom(){
+  if(useRelay) return relayHost();
   grabName(); roomCode=newCode(); isHost=true;
   $('room-code').textContent=roomCode;
   $('lobby-status').textContent='Opening room\u2026';
@@ -804,6 +954,7 @@ function hostRoom(){
   });
 }
 function joinRoom(code){
+  if(useRelay) return relayJoin(code);
   grabName(); isHost=false; roomCode=code;
   $('err-join').textContent='';
   linked=false; attempts=0; netRetry=0;
@@ -844,6 +995,7 @@ function netFail(msg){
   show('scr-menu');
 }
 function destroyPeer(){
+  relayStop();
   if(conn){try{conn.close()}catch(x){}}
   if(peer){try{peer.destroy()}catch(x){}}
   conn=null;peer=null;
@@ -927,7 +1079,7 @@ $('grid-enemy').addEventListener('click',fire);
 $('btn-send').onclick=sendChat;
 $('in-chat').addEventListener('keydown',function(e){if(e.key==='Enter')sendChat()});
 $('btn-again').onclick=function(){
-  if(conn&&conn.open){send({t:'rematch'});resetState();renderPlaceBoard();renderBattle();show('scr-place')}
+  if(linkOpen()){send({t:'rematch'});resetState();renderPlaceBoard();renderBattle();show('scr-place')}
   else {destroyPeer();resetState();renderPlaceBoard();show('scr-menu')}
 };
 var q=new URLSearchParams(location.search).get('room');
