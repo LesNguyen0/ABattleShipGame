@@ -77,8 +77,10 @@
   #screen-battle,#screen-place{height:100vh;max-height:100vh;overflow:hidden;justify-content:center;padding:6px 10px;}
 
   .play-wrap{display:flex;gap:16px;justify-content:center;align-items:center;width:100%;}
-  .right-col{display:flex;flex-direction:column;align-items:center;gap:12px;flex:none;}
-  .mine-fleet{display:flex;flex-direction:column;align-items:center;gap:3px;}
+  /* Define the mini cell size ONCE here so BOTH the labels and the grid
+     inside use the same value (otherwise labels stretch past the grid). */
+  .mine-fleet{--cell: clamp(12px, min(3.4vw,2.6vh), 22px);
+     display:flex;flex-direction:column;align-items:center;gap:3px;flex:none;}
   .side-panel{width:160px;flex:none;background:linear-gradient(180deg,var(--panel),var(--bg2));
      border:1px solid #23455f;border-radius:16px;padding:14px;text-align:center;}
   .side-panel .avatar{margin:0 auto 8px;font-size:44px;width:70px;height:70px;}
@@ -109,7 +111,8 @@
      border:1px solid #256a92;border-radius:6px;overflow:hidden;touch-action:none;}
   .cell{border-right:1px solid rgba(120,180,220,.12);border-bottom:1px solid rgba(120,180,220,.12);
      background:linear-gradient(180deg,rgba(35,90,125,.35),rgba(15,55,80,.35));position:relative;}
-  .board.mini{--cell: clamp(12px, min(3.4vw,2.6vh), 22px);grid-template-columns:repeat(10,var(--cell));grid-template-rows:repeat(10,var(--cell));}
+  /* .board.mini inherits --cell from .mine-fleet (set above) so its grid
+     matches the labels; nothing to override here. */
   .board.enemy .cell{cursor:crosshair;}
   .board.enemy .cell:hover{background:rgba(55,199,255,.18);}
   .board.enemy.locked .cell{cursor:default;}
@@ -166,10 +169,9 @@
 
   @media (max-width:760px){
     :root{--cell: clamp(20px, min(8.2vw, 4.6vh), 40px);}
-    .board.mini{--cell: clamp(13px, min(4.6vw,2.7vh), 24px);}
+    .mine-fleet{--cell: clamp(16px, min(6.4vw,2.9vh), 26px);}
     .side-panel{display:none;}
     .play-wrap{flex-direction:column;gap:10px;align-items:center;}
-    .right-col{gap:0;}
     .code-box{letter-spacing:10px;padding-left:16px;}
   }
   .tray{margin-top:10px;padding:10px;min-height:56px;}
@@ -263,27 +265,25 @@
       </div>
     </div>
 
-    <div class="right-col">
-      <div class="side-panel" id="oppPanel">
-        <div class="avatar" id="oppPanelAvatar">🦑</div>
-        <div class="pname" id="oppPanelName">Đối thủ</div>
-        <div class="plabel">Đối thủ</div>
-        <div class="fleetmini" id="oppFleetMini"></div>
-      </div>
-
-      <div class="mine-fleet">
-        <div class="board-title mine">🛡️ Hạm đội của bạn</div>
-        <div class="board-frame">
-          <div class="board-outer">
-            <div class="corner"></div>
-            <div class="labels-x mini" id="myLabelsX"></div>
-            <div class="labels-y mini" id="myLabelsY"></div>
-            <div class="board mini" id="myBoard">
-              <div class="ships-layer" id="myShipsLayer"></div>
-            </div>
+    <div class="mine-fleet">
+      <div class="board-title mine">🛡️ Hạm đội của bạn</div>
+      <div class="board-frame">
+        <div class="board-outer">
+          <div class="corner"></div>
+          <div class="labels-x mini" id="myLabelsX"></div>
+          <div class="labels-y mini" id="myLabelsY"></div>
+          <div class="board mini" id="myBoard">
+            <div class="ships-layer" id="myShipsLayer"></div>
           </div>
         </div>
       </div>
+    </div>
+
+    <div class="side-panel" id="oppPanel">
+      <div class="avatar" id="oppPanelAvatar">🦑</div>
+      <div class="pname" id="oppPanelName">Đối thủ</div>
+      <div class="plabel">Đối thủ</div>
+      <div class="fleetmini" id="oppFleetMini"></div>
     </div>
   </div>
 </div>
@@ -382,9 +382,23 @@ function setHomeStatus(msg,err){const s=$("homeStatus");s.textContent=msg;s.clas
 //========================================================================
 // NETWORKING (PeerJS)
 //========================================================================
+// ICE config: STUN for normal NATs + free TURN relays so the connection
+// still works on mobile 4G/5G / strict NATs (where pure P2P fails).
+const PEER_OPTS = {
+  config: {
+    iceServers: [
+      { urls: "stun:stun.l.google.com:19302" },
+      { urls: "stun:stun1.l.google.com:19302" },
+      { urls: "stun:global.stun.twilio.com:3478" },
+      { urls: "turn:openrelay.metered.ca:80",  username: "openrelayproject", credential: "openrelayproject" },
+      { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
+      { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" }
+    ]
+  }
+};
 function newPeer(id){
-  // id optional; PeerJS free cloud
-  return id ? new Peer(id) : new Peer();
+  // id optional; PeerJS free cloud handles signaling
+  return id ? new Peer(id, PEER_OPTS) : new Peer(PEER_OPTS);
 }
 
 function createRoom(){
@@ -427,7 +441,8 @@ function joinRoom(code){
     const conn = peer.connect(PEER_PREFIX+code, {reliable:true});
     G.conn = conn;
     conn.on("open", ()=>{ connected=true; setupConn(conn); });
-    setTimeout(()=>{ if(!connected && !G.connected) setHomeStatus("Không tìm thấy phòng. Kiểm tra lại mã.", true); }, 9000);
+    setHomeStatus("Đang kết nối P2P (có thể mất vài giây trên 4G/5G)...");
+    setTimeout(()=>{ if(!connected && !G.connected) setHomeStatus("Không kết nối được. Kiểm tra lại mã, hoặc thử lại (mạng 4G/5G đôi khi cần vài lần).", true); }, 20000);
   });
   peer.on("error", err=>{
     if(err.type==="peer-unavailable"){ setHomeStatus("Không tìm thấy phòng "+code+".", true); }
