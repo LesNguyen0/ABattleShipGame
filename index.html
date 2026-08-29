@@ -382,71 +382,144 @@ function setHomeStatus(msg,err){const s=$("homeStatus");s.textContent=msg;s.clas
 //========================================================================
 // NETWORKING (PeerJS)
 //========================================================================
-// ICE config: STUN for normal NATs + free TURN relays so the connection
-// still works on mobile 4G/5G / strict NATs (where pure P2P fails).
-const PEER_OPTS = {
-  config: {
-    iceServers: [
-      { urls: "stun:stun.l.google.com:19302" },
-      { urls: "stun:stun1.l.google.com:19302" },
-      { urls: "stun:global.stun.twilio.com:3478" },
-      { urls: "turn:openrelay.metered.ca:80",  username: "openrelayproject", credential: "openrelayproject" },
-      { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
-      { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" }
-    ]
-  }
-};
+// ═══════════════════════════════════════════════════════════════════════
+//  ⚙️  CẤU HÌNH TURN — để chơi được trên MỌI mạng (kể cả CẢ HAI đều 4G/5G)
+// ───────────────────────────────────────────────────────────────────────
+//  Lấy MIỄN PHÍ (khoảng 5 phút, 50GB/tháng — thừa cho game này):
+//    1. Mở  https://dashboard.metered.ca/  →  đăng ký tài khoản free.
+//    2. Menu trái:  "TURN Server"  →  chọn (hoặc tạo) một App.
+//    3. Kéo xuống mục  "Ice Servers Configuration".
+//       Chọn tab  JavaScript  →  copy đúng cái MẢNG  [ {...}, {...}, ... ]
+//    4. DÁN mảng đó vào giữa hai dấu [ ] của MY_ICE_SERVERS bên dưới,
+//       thay cho mấy dòng ví dụ (nhớ xoá dấu // ở đầu dòng).
+//    5. Lưu file → up lại lên GitHub. XONG! Giờ mọi mạng đều kết nối.
+//
+//  (Nếu để TRỐNG, game vẫn chạy bằng TURN công cộng dự phòng — nhưng ca
+//   "cả hai cùng 4G" có thể chập chờn. Điền vào để chắc 100%.)
+// ═══════════════════════════════════════════════════════════════════════
+const MY_ICE_SERVERS = [
+  // 👉 DÁN mảng iceServers từ Metered.ca vào đây. Ví dụ định dạng:
+  // { urls: "stun:stun.relay.metered.ca:80" },
+  // { urls: "turn:global.relay.metered.ca:80",                 username: "abc123", credential: "xyz789" },
+  // { urls: "turn:global.relay.metered.ca:80?transport=tcp",   username: "abc123", credential: "xyz789" },
+  // { urls: "turn:global.relay.metered.ca:443",                username: "abc123", credential: "xyz789" },
+  // { urls: "turns:global.relay.metered.ca:443?transport=tcp", username: "abc123", credential: "xyz789" },
+];
+
+// Dự phòng công cộng (STUN + TURN) — dùng khi MY_ICE_SERVERS còn trống.
+const PUBLIC_ICE_SERVERS = [
+  { urls: "stun:stun.l.google.com:19302" },
+  { urls: "stun:stun1.l.google.com:19302" },
+  { urls: "stun:stun.cloudflare.com:3478" },
+  { urls: "turn:openrelay.metered.ca:80",                 username: "openrelayproject", credential: "openrelayproject" },
+  { urls: "turn:openrelay.metered.ca:443",                username: "openrelayproject", credential: "openrelayproject" },
+  { urls: "turn:openrelay.metered.ca:443?transport=tcp",  username: "openrelayproject", credential: "openrelayproject" },
+  { urls: "turns:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" }
+];
+
+function activeIceServers(){
+  // Always keep a couple of STUN entries, then the TURN relays.
+  const stun = [{urls:"stun:stun.l.google.com:19302"},{urls:"stun:stun.cloudflare.com:3478"}];
+  return MY_ICE_SERVERS.length ? stun.concat(MY_ICE_SERVERS) : PUBLIC_ICE_SERVERS;
+}
+function peerOpts(){ return { config: { iceServers: activeIceServers() } }; }
 function newPeer(id){
-  // id optional; PeerJS free cloud handles signaling
-  return id ? new Peer(id, PEER_OPTS) : new Peer(PEER_OPTS);
+  return id ? new Peer(id, peerOpts()) : new Peer(peerOpts());
+}
+// PeerJS signalling can drop on mobile — auto-reconnect it.
+function wirePeerCommon(peer){
+  peer.on("disconnected", ()=>{ try{ peer.reconnect(); }catch(e){} });
+}
+// Watch the underlying WebRTC connection; call onFail() if ICE truly fails.
+function watchIce(conn, onFail){
+  let tries=0;
+  const attach=()=>{
+    const pc = conn.peerConnection;
+    if(!pc){ if(tries++<20) setTimeout(attach,400); return; }
+    pc.oniceconnectionstatechange = ()=>{
+      if(pc.iceConnectionState==="failed") onFail();
+    };
+  };
+  attach();
 }
 
+//------------------------------------------------------------------------
+// CREATE ROOM (host) — retries on transient network errors.
+//------------------------------------------------------------------------
 function createRoom(){
-  setHomeStatus("Đang tạo phòng...");
   G.isHost = true;
-  attemptCreate(0);
+  attemptCreate(randomCode(), 0);
 }
-function attemptCreate(tries){
-  if(tries>6){ setHomeStatus("Không tạo được phòng, thử lại sau.", true); return; }
-  const code = randomCode();
+function attemptCreate(code, tries){
+  if(tries>8){ setHomeStatus("Không tạo được phòng, kiểm tra mạng rồi thử lại.", true); return; }
+  setHomeStatus("Đang tạo phòng...");
   G.roomCode = code;
   cleanupPeer();
   const peer = newPeer(PEER_PREFIX+code);
   G.peer = peer;
+  wirePeerCommon(peer);
   peer.on("open", ()=>{
     $("lobbyCode").textContent = code;
     showScreen("screen-lobby");
     G.phase="lobby";
+    $("lobbyStatus").innerHTML = '<span class="spinner"></span>Đang chờ đối thủ kết nối...';
+    $("lobbyStatus").className = "status";
   });
   peer.on("connection", conn=>{
     if(G.conn && G.conn.open){ conn.close(); return; } // one opponent only
     G.conn = conn;
+    watchIce(conn, ()=>{
+      if(!G.connected) $("lobbyStatus").innerHTML = "⚠️ Đối thủ kết nối chập chờn, đang thử lại...";
+    });
     setupConn(conn);
   });
   peer.on("error", err=>{
-    if(err.type==="unavailable-id"){ attemptCreate(tries+1); }
-    else { setHomeStatus("Lỗi kết nối: "+err.type, true); }
+    if(err.type==="unavailable-id"){ attemptCreate(randomCode(), tries+1); }     // code trùng -> đổi mã
+    else if(err.type==="network" || err.type==="server-error" || err.type==="socket-error"){
+      setTimeout(()=>{ if(!G.connected) attemptCreate(code, tries+1); }, 1000);   // giữ nguyên mã, thử lại
+    } else { setHomeStatus("Lỗi kết nối: "+err.type, true); }
   });
 }
 
+//------------------------------------------------------------------------
+// JOIN ROOM — retries a few times so flaky mobile networks still connect.
+//------------------------------------------------------------------------
 function joinRoom(code){
-  setHomeStatus("Đang kết nối tới phòng "+code+"...");
   G.isHost = false;
   G.roomCode = code;
+  attemptJoin(code, 1);
+}
+function attemptJoin(code, tries){
+  const MAX = 5, PER_TRY_MS = 9000;
+  setHomeStatus("Đang kết nối tới phòng "+code+"... (lần "+tries+"/"+MAX+")");
   cleanupPeer();
   const peer = newPeer();
   G.peer = peer;
-  let connected=false;
+  wirePeerCommon(peer);
+  let opened=false, done=false, lastMsg="";
+  const retry = (finalMsg)=>{
+    if(done || G.connected) return;
+    done=true;
+    if(tries<MAX){ setTimeout(()=>{ if(!G.connected) attemptJoin(code, tries+1); }, 700); }
+    else { setHomeStatus(finalMsg || lastMsg || "Không kết nối được sau nhiều lần thử. Kiểm tra mã hoặc mạng rồi thử lại.", true); }
+  };
   peer.on("open", ()=>{
     const conn = peer.connect(PEER_PREFIX+code, {reliable:true});
     G.conn = conn;
-    conn.on("open", ()=>{ connected=true; setupConn(conn); });
-    setHomeStatus("Đang kết nối P2P (có thể mất vài giây trên 4G/5G)...");
-    setTimeout(()=>{ if(!connected && !G.connected) setHomeStatus("Không kết nối được. Kiểm tra lại mã, hoặc thử lại (mạng 4G/5G đôi khi cần vài lần).", true); }, 20000);
+    conn.on("open", ()=>{ opened=true; done=true; setupConn(conn); });
+    conn.on("error", ()=>{ retry(); });
+    watchIce(conn, ()=>retry());
+    setTimeout(()=>{ if(!opened && !G.connected) retry(); }, PER_TRY_MS);
   });
   peer.on("error", err=>{
-    if(err.type==="peer-unavailable"){ setHomeStatus("Không tìm thấy phòng "+code+".", true); }
-    else if(err.type!=="network"){ setHomeStatus("Lỗi: "+err.type, true); }
+    if(err.type==="peer-unavailable"){
+      // Host chưa online hoặc mã sai — thử lại vài lần phòng khi host đang khởi tạo.
+      lastMsg = "Không tìm thấy phòng "+code+". Kiểm tra lại mã (và bạn kia đã bấm Tạo phòng chưa).";
+      retry(lastMsg);
+    } else {
+      lastMsg = "Lỗi mạng ("+err.type+"). Đang thử lại...";
+      retry();
+    }
   });
 }
 
