@@ -398,12 +398,11 @@ function setHomeStatus(msg,err){const s=$("homeStatus");s.textContent=msg;s.clas
 //   "cả hai cùng 4G" có thể chập chờn. Điền vào để chắc 100%.)
 // ═══════════════════════════════════════════════════════════════════════
 const MY_ICE_SERVERS = [
-  // 👉 DÁN mảng iceServers từ Metered.ca vào đây. Ví dụ định dạng:
-  // { urls: "stun:stun.relay.metered.ca:80" },
-  // { urls: "turn:global.relay.metered.ca:80",                 username: "abc123", credential: "xyz789" },
-  // { urls: "turn:global.relay.metered.ca:80?transport=tcp",   username: "abc123", credential: "xyz789" },
-  // { urls: "turn:global.relay.metered.ca:443",                username: "abc123", credential: "xyz789" },
-  // { urls: "turns:global.relay.metered.ca:443?transport=tcp", username: "abc123", credential: "xyz789" },
+  { urls: "stun:stun.relay.metered.ca:80" },
+  { urls: "turn:global.relay.metered.ca:80",                 username: "4133cd9e80e4c408c4036704", credential: "BLksJ8sG+euv/LsN" },
+  { urls: "turn:global.relay.metered.ca:80?transport=tcp",   username: "4133cd9e80e4c408c4036704", credential: "BLksJ8sG+euv/LsN" },
+  { urls: "turn:global.relay.metered.ca:443",                username: "4133cd9e80e4c408c4036704", credential: "BLksJ8sG+euv/LsN" },
+  { urls: "turns:global.relay.metered.ca:443?transport=tcp", username: "4133cd9e80e4c408c4036704", credential: "BLksJ8sG+euv/LsN" },
 ];
 
 // Dự phòng công cộng (STUN + TURN) — dùng khi MY_ICE_SERVERS còn trống.
